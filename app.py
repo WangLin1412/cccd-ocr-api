@@ -27,7 +27,7 @@ def ocr():
             files={"file": open(filename, "rb")},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "vie"
+                "language": "vnm"
             },
             timeout=60
         )
