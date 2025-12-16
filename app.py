@@ -26,8 +26,7 @@ def ocr():
             "https://api.ocr.space/parse/image",
             files={"file": open(filename, "rb")},
             data={
-                "apikey": OCR_API_KEY,
-                "language": "vnm"
+                "apikey": OCR_API_KEY
             },
             timeout=60
         )
