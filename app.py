@@ -15,7 +15,7 @@ def home():
 @app.route("/ocr", methods=["POST"])
 def ocr():
     if "image" not in request.files:
-        return jsonify({"error": "No image"}), 400
+        return jsonify({"error": "No image uploaded"}), 400
 
     image = request.files["image"]
     filename = f"{uuid.uuid4()}.jpg"
@@ -33,10 +33,26 @@ def ocr():
         )
 
         result = response.json()
-        text = result["ParsedResults"][0]["ParsedText"]
+
+        # 👉 CHECK LỖI OCR.SPACE
+        if result.get("IsErroredOnProcessing"):
+            return jsonify({
+                "error": "OCR failed",
+                "message": result.get("ErrorMessage", "Unknown error"),
+                "details": result
+            }), 400
+
+        if "ParsedResults" not in result:
+            return jsonify({
+                "error": "Invalid OCR response",
+                "details": result
+            }), 400
+
+        text = result["ParsedResults"][0].get("ParsedText", "")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
     finally:
         if os.path.exists(filename):
             os.remove(filename)
@@ -49,6 +65,7 @@ def ocr():
         "text": text,
         "excel_url": f"/download/{excel_name}"
     })
+
 
 @app.route("/download/<name>")
 def download(name):
