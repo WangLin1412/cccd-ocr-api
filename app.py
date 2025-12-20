@@ -100,7 +100,7 @@ def ocr():
             files={"file": open(filename, "rb")},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "vie",
+                "language": "auto",
                 "OCREngine": "2"
             },
             timeout=60
