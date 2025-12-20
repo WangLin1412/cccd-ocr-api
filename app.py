@@ -4,7 +4,9 @@ import requests, os, uuid, re, unicodedata
 import pandas as pd
 
 app = Flask(__name__)
-CORS(app)
+
+# ✅ CORS CHUẨN CHO WORDPRESS + FETCH
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 OCR_API_KEY = os.environ.get("OCR_API_KEY")
 
@@ -15,7 +17,7 @@ def clean_cccd_text(raw_text: str) -> str:
     if not raw_text:
         return ""
 
-    # 1. Normalize Unicode
+    # 1. Chuẩn hóa Unicode
     text = unicodedata.normalize("NFKC", raw_text)
 
     # 2. Fix lỗi OCR phổ biến (áp dụng cho MỌI CCCD)
@@ -48,20 +50,20 @@ def clean_cccd_text(raw_text: str) -> str:
     for k, v in replaces.items():
         text = text.replace(k, v)
 
-    # 3. Xóa ký tự rác
+    # 3. Loại ký tự rác
     text = re.sub(r"[`~^*_]", "", text)
     text = re.sub(r"\s{2,}", " ", text)
 
     # 4. Chuẩn hóa dòng
     lines = [l.strip() for l in text.splitlines() if l.strip()]
-
     output = []
+
     for line in lines:
-        # bỏ dòng ngày cấp không cần thiết
+        # Bỏ dòng ngày cấp (nếu có)
         if re.match(r"^\d{2}/\d{2}/\d{4}$", line):
             continue
 
-        # chuẩn số CCCD
+        # Chuẩn số CCCD
         if "Số:" in line:
             m = re.search(r"\d{12}", line)
             if m:
@@ -72,17 +74,19 @@ def clean_cccd_text(raw_text: str) -> str:
 
     return "\n".join(output)
 
-
 # ===============================
 # ROUTES
 # ===============================
-@app.route("/")
+@app.route("/", methods=["GET"])
 def home():
     return "CCCD OCR API is running"
 
-
-@app.route("/ocr", methods=["POST"])
+# ✅ BẮT BUỘC CÓ OPTIONS
+@app.route("/ocr", methods=["POST", "OPTIONS"])
 def ocr():
+    if request.method == "OPTIONS":
+        return "", 200
+
     if "image" not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
 
@@ -137,8 +141,7 @@ def ocr():
         "excel_url": f"/download/{excel_name}"
     })
 
-
-@app.route("/download/<name>")
+@app.route("/download/<name>", methods=["GET"])
 def download(name):
     if os.path.exists(name):
         return send_file(name, as_attachment=True)
