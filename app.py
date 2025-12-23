@@ -2,6 +2,11 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import requests, os, uuid, re, unicodedata
 import pandas as pd
+from PIL import Image
+import cv2
+import pytesseract
+import numpy as np
+
 
 app = Flask(__name__)
 
@@ -74,6 +79,39 @@ def clean_cccd_text(raw_text: str) -> str:
 
     return "\n".join(output)
 
+def auto_rotate_image(image_path):
+    """
+    Tự động xoay ảnh CCCD về đúng chiều
+    """
+    image = cv2.imread(image_path)
+    if image is None:
+        return
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    try:
+        osd = pytesseract.image_to_osd(gray)
+        rotate_angle = 0
+
+        if "Rotate: 90" in osd:
+            rotate_angle = 90
+        elif "Rotate: 180" in osd:
+            rotate_angle = 180
+        elif "Rotate: 270" in osd:
+            rotate_angle = 270
+
+        if rotate_angle != 0:
+            (h, w) = image.shape[:2]
+            center = (w // 2, h // 2)
+            M = cv2.getRotationMatrix2D(center, -rotate_angle, 1.0)
+            rotated = cv2.warpAffine(image, M, (w, h),
+                                     flags=cv2.INTER_CUBIC,
+                                     borderMode=cv2.BORDER_REPLICATE)
+            cv2.imwrite(image_path, rotated)
+
+    except Exception as e:
+        print("Auto-rotate failed:", e)
+
 # ===============================
 # ROUTES
 # ===============================
@@ -93,6 +131,9 @@ def ocr():
     image = request.files["image"]
     filename = f"{uuid.uuid4()}.jpg"
     image.save(filename)
+    # ✅ AUTO ROTATE CCCD (fix xoay ngang / dọc / ngược)
+    auto_rotate_image(filename)
+
 
     try:
         response = requests.post(
