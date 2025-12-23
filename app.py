@@ -11,7 +11,14 @@ import numpy as np
 app = Flask(__name__)
 
 # ✅ CORS CHUẨN CHO WORDPRESS + FETCH
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+CORS(
+    app,
+    resources={r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }}
+)
 
 OCR_API_KEY = os.environ.get("OCR_API_KEY")
 
@@ -115,6 +122,14 @@ def auto_rotate_image(image_path):
 # ===============================
 # ROUTES
 # ===============================
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "*")
+        response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        return response
 @app.route("/", methods=["GET"])
 def home():
     return "CCCD OCR API is running"
