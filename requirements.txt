@@ -4,3 +4,6 @@ requests
 pandas
 openpyxl
 gunicorn
+Pillow
+opencv-python-headless
+pytesseract
