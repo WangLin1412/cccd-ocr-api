@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_file
+from threading import Semaphore
 from flask_cors import CORS
 import requests, os, uuid, re, unicodedata
 import pandas as pd
@@ -8,6 +9,8 @@ import pytesseract
 import numpy as np
 
 
+# 🔒 Giới hạn 2 request OCR cùng lúc
+semaphore = Semaphore(2)
 app = Flask(__name__)
 
 # ✅ CORS CHUẨN CHO WORDPRESS + FETCH
@@ -137,26 +140,36 @@ def home():
 # ✅ BẮT BUỘC CÓ OPTIONS
 @app.route("/ocr", methods=["POST", "OPTIONS"])
 def ocr():
+
+    # ===== CORS PREFLIGHT =====
     if request.method == "OPTIONS":
         return "", 200
 
-    if "image" not in request.files:
-        return jsonify({"error": "No image uploaded"}), 400
-
-    image = request.files["image"]
-    filename = f"{uuid.uuid4()}.jpg"
-    image.save(filename)
-    # ✅ AUTO ROTATE CCCD (fix xoay ngang / dọc / ngược)
-    auto_rotate_image(filename)
-
+    # ===== GIỚI HẠN 2 USER =====
+    acquired = semaphore.acquire(blocking=False)
+    if not acquired:
+        return jsonify({
+            "error": "Chưa tới lượt bạn!"
+        }), 429
 
     try:
+        if "image" not in request.files:
+            return jsonify({"error": "No image uploaded"}), 400
+
+        image = request.files["image"]
+        filename = f"{uuid.uuid4()}.jpg"
+        image.save(filename)
+
+        # ✅ AUTO ROTATE CCCD
+        auto_rotate_image(filename)
+
+        # ===== OCR.SPACE =====
         response = requests.post(
             "https://api.ocr.space/parse/image",
             files={"file": open(filename, "rb")},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "auto",
+                "language": "auto",     # ⚠️ AUTO để tránh lỗi vie
                 "OCREngine": "2"
             },
             timeout=60
@@ -184,10 +197,12 @@ def ocr():
         return jsonify({"error": str(e)}), 500
 
     finally:
+        # 🔓 NHẢ SLOT + XÓA FILE
+        semaphore.release()
         if os.path.exists(filename):
             os.remove(filename)
 
-    # Xuất Excel
+    # ===== EXPORT EXCEL =====
     excel_name = f"{uuid.uuid4()}.xlsx"
     df = pd.DataFrame([{"CCCD_TEXT": text}])
     df.to_excel(excel_name, index=False)
