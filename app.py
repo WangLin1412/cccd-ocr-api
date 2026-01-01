@@ -7,10 +7,19 @@ from PIL import Image
 import cv2
 import pytesseract
 import numpy as np
+from collections import deque
+import time
+import threading
 
 
-# 🔒 Giới hạn 2 request OCR cùng lúc
-semaphore = Semaphore(2)
+# ===== SLOT LIMIT =====
+semaphore = threading.Semaphore(2)
+# ===== RATE LIMIT =====
+REQUEST_LIMIT = 10
+TIME_WINDOW = 60  # seconds
+request_times = deque()
+rate_lock = threading.Lock()
+
 app = Flask(__name__)
 
 # ✅ CORS CHUẨN CHO WORDPRESS + FETCH
@@ -145,13 +154,27 @@ def ocr():
     if request.method == "OPTIONS":
         return "", 200
 
-    # ===== GIỚI HẠN 2 USER =====
+    # ===== RATE LIMIT 10 REQ / PHÚT =====
+    now = time.time()
+    with rate_lock:
+        while request_times and now - request_times[0] > TIME_WINDOW:
+            request_times.popleft()
+
+        if len(request_times) >= REQUEST_LIMIT:
+            return jsonify({
+                "error": "Hệ thống đang bận, vui lòng thử lại sau"
+            }), 429
+
+        request_times.append(now)
+
+    # ===== SLOT LIMIT 2 USER =====
     acquired = semaphore.acquire(blocking=False)
     if not acquired:
         return jsonify({
             "error": "Chưa tới lượt bạn!"
         }), 429
 
+    filename = None
     try:
         if "image" not in request.files:
             return jsonify({"error": "No image uploaded"}), 400
@@ -160,7 +183,7 @@ def ocr():
         filename = f"{uuid.uuid4()}.jpg"
         image.save(filename)
 
-        # ✅ AUTO ROTATE CCCD
+        # ✅ AUTO ROTATE
         auto_rotate_image(filename)
 
         # ===== OCR.SPACE =====
@@ -169,25 +192,24 @@ def ocr():
             files={"file": open(filename, "rb")},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "auto",     # ⚠️ AUTO để tránh lỗi vie
+                "language": "auto",
                 "OCREngine": "2"
             },
             timeout=60
         )
+
+        # 🚨 BẮT 429 TỪ OCR.SPACE
+        if response.status_code == 429:
+            return jsonify({
+                "error": "OCR đang quá tải, vui lòng thử lại sau"
+            }), 429
 
         result = response.json()
 
         if result.get("IsErroredOnProcessing"):
             return jsonify({
                 "error": "OCR failed",
-                "message": result.get("ErrorMessage", "Unknown error"),
-                "details": result
-            }), 400
-
-        if "ParsedResults" not in result:
-            return jsonify({
-                "error": "Invalid OCR response",
-                "details": result
+                "message": result.get("ErrorMessage", "Unknown error")
             }), 400
 
         raw_text = result["ParsedResults"][0].get("ParsedText", "")
@@ -197,9 +219,10 @@ def ocr():
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # 🔓 NHẢ SLOT + XÓA FILE
-        semaphore.release()
-        if os.path.exists(filename):
+        # 🔓 NHẢ SLOT ĐÚNG CÁCH
+        if acquired:
+            semaphore.release()
+        if filename and os.path.exists(filename):
             os.remove(filename)
 
     # ===== EXPORT EXCEL =====
