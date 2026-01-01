@@ -212,6 +212,12 @@ def ocr():
                 "message": result.get("ErrorMessage", "Unknown error")
             }), 400
 
+        parsed = result.get("ParsedResults")
+        if not parsed or not parsed[0].get("ParsedText"):
+            return jsonify({
+                "error": "Không nhận diện được chữ trong ảnh. Vui lòng chụp rõ hơn."
+            }), 400
+        
         raw_text = result["ParsedResults"][0].get("ParsedText", "")
         text = clean_cccd_text(raw_text)
 
