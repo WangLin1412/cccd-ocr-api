@@ -197,7 +197,7 @@ def ocr():
                     "language": "auto",
                     "OCREngine": "2"
                 },
-                timeout=(5, 50)  # 🔥 connect 3s, read 30s
+                timeout=(5, 60)  # 🔥 connect 5s, read 60s
             )
         except requests.exceptions.ConnectTimeout:
             return jsonify({
