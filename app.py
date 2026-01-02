@@ -176,6 +176,7 @@ def ocr():
 
     filename = None
     try:
+        # ===== VALIDATE FILE =====
         if "image" not in request.files:
             return jsonify({"error": "No image uploaded"}), 400
 
@@ -183,22 +184,31 @@ def ocr():
         filename = f"{uuid.uuid4()}.jpg"
         image.save(filename)
 
-        # ✅ AUTO ROTATE
+        # ✅ AUTO ROTATE CCCD
         auto_rotate_image(filename)
 
-        # ===== OCR.SPACE =====
-        response = requests.post(
-            "https://api.ocr.space/parse/image",
-            files={"file": open(filename, "rb")},
-            data={
-                "apikey": OCR_API_KEY,
-                "language": "auto",
-                "OCREngine": "2"
-            },
-            timeout=60
-        )
+        # ===== OCR.SPACE (HARD TIMEOUT) =====
+        try:
+            response = requests.post(
+                "https://api.ocr.space/parse/image",
+                files={"file": open(filename, "rb")},
+                data={
+                    "apikey": OCR_API_KEY,
+                    "language": "auto",
+                    "OCREngine": "2"
+                },
+                timeout=(3, 30)  # 🔥 connect 3s, read 30s
+            )
+        except requests.exceptions.ConnectTimeout:
+            return jsonify({
+                "error": "Không kết nối được OCR, vui lòng thử lại"
+            }), 504
+        except requests.exceptions.ReadTimeout:
+            return jsonify({
+                "error": "OCR xử lý quá lâu, vui lòng gửi lại ảnh"
+            }), 504
 
-        # 🚨 BẮT 429 TỪ OCR.SPACE
+        # 🚨 OCR.SPACE QUÁ TẢI
         if response.status_code == 429:
             return jsonify({
                 "error": "OCR đang quá tải, vui lòng thử lại sau"
@@ -206,26 +216,28 @@ def ocr():
 
         result = response.json()
 
+        # 🚨 OCR SPACE BÁO LỖI
         if result.get("IsErroredOnProcessing"):
             return jsonify({
                 "error": "OCR failed",
                 "message": result.get("ErrorMessage", "Unknown error")
             }), 400
 
+        # 🚨 OCR KHÔNG ĐỌC ĐƯỢC CHỮ
         parsed = result.get("ParsedResults")
         if not parsed or not parsed[0].get("ParsedText"):
             return jsonify({
                 "error": "Không nhận diện được chữ trong ảnh. Vui lòng chụp rõ hơn."
             }), 400
-        
-        raw_text = result["ParsedResults"][0].get("ParsedText", "")
+
+        raw_text = parsed[0]["ParsedText"]
         text = clean_cccd_text(raw_text)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # 🔓 NHẢ SLOT ĐÚNG CÁCH
+        # 🔓 NHẢ SLOT + DỌN FILE
         if acquired:
             semaphore.release()
         if filename and os.path.exists(filename):
