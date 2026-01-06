@@ -14,8 +14,8 @@ import threading
 # ===== SLOT LIMIT =====
 semaphore = threading.Semaphore(2)
 # ===== RATE LIMIT =====
-REQUEST_LIMIT = 10
-TIME_WINDOW = 60  # seconds
+REQUEST_LIMIT = 3
+TIME_WINDOW = 20  # seconds
 request_times = deque()
 rate_lock = threading.Lock()
 
@@ -223,7 +223,7 @@ def ocr():
             }), 429
 
         request_times.append(now)
-        print("⏱ RATE COUNT =", len(request_times))
+        print(f"⏱ RATE COUNT = {len(request_times)} / {REQUEST_LIMIT}")
 
     # ===== SLOT LIMIT 2 USER =====
     acquired = semaphore.acquire(blocking=False)
