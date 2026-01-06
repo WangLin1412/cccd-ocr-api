@@ -211,32 +211,27 @@ def ocr():
     if request.method == "OPTIONS":
         return "", 200
 
-    # ===== RATE LIMIT 10 REQ / PHÚT =====
-    now = time.time()
-    with rate_lock:
-        while request_times and now - request_times[0] > TIME_WINDOW:
-            request_times.popleft()
-
-        if len(request_times) >= REQUEST_LIMIT:
-            return jsonify({
-                "error": "Hệ thống đang bận, vui lòng thử lại sau"
-            }), 429
-
-        request_times.append(now)
-        print(f"⏱ RATE COUNT = {len(request_times)} / {REQUEST_LIMIT}")
-
-    # ===== SLOT LIMIT 2 USER =====
+    # ===== SLOT LIMIT =====
     acquired = semaphore.acquire(blocking=False)
     if not acquired:
-        # ❗ rollback rate limit vì request chưa được xử lý
-        with rate_lock:
-            if request_times:
-                request_times.pop()
-    
         return jsonify({
             "error": "Chưa tới lượt bạn!"
         }), 429
 
+    # ===== RATE LIMIT (CHỈ ĐẾM REQUEST ĐƯỢC XỬ LÝ) =====
+    now = time.time()
+    with rate_lock:
+        while request_times and now - request_times[0] > TIME_WINDOW:
+            request_times.popleft()
+    
+        if len(request_times) >= REQUEST_LIMIT:
+            semaphore.release()  # 🔥 trả slot lại
+            return jsonify({
+                "error": "Quá giới hạn request, vui lòng thử lại sau"
+            }), 429
+
+        request_times.append(now)
+        print(f"⏱ RATE COUNT = {len(request_times)} / {REQUEST_LIMIT}")
 
     filename = None
     try:
