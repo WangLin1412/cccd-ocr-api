@@ -97,52 +97,94 @@ def clean_cccd_text(raw_text: str) -> str:
 
     return "\n".join(output)
 
-def auto_rotate_cccd_local(image_path):
-    """
-    Auto rotate image using edge direction analysis
-    NO OCR – NO TESSERACT – Render free safe
-    """
-    image = cv2.imread(image_path)
-    if image is None:
-        print("❌ ROTATE: cannot read image")
+
+
+def auto_rotate_document(image_path, debug=True):
+    import cv2
+    import numpy as np
+
+    img0 = cv2.imread(image_path)
+    if img0 is None:
         return image_path
 
-    print("🔄 ROTATE: start local auto-rotate")
-
-    def score_horizontal_edges(img):
+    def score_image(img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(gray, 50, 150)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
+        # TEXT MASK
+        thresh = cv2.adaptiveThreshold(
+            blur, 255,
+            cv2.ADAPTIVE_THRESH_MEAN_C,
+            cv2.THRESH_BINARY_INV,
+            25, 15
+        )
+
+        h, w = thresh.shape
+
+        # TEXT DENSITY
+        top = thresh[:h//2, :]
+        bottom = thresh[h//2:, :]
+
+        text_top = np.sum(top) / 255
+        text_bottom = np.sum(bottom) / 255
+
+        # EDGE DIRECTION
+        edges = cv2.Canny(blur, 50, 150)
         sobelx = cv2.Sobel(edges, cv2.CV_64F, 1, 0, ksize=3)
         sobely = cv2.Sobel(edges, cv2.CV_64F, 0, 1, ksize=3)
 
-        return np.sum(np.abs(sobely)) - np.sum(np.abs(sobelx))
+        vertical_strength = np.sum(np.abs(sobelx))
+        horizontal_strength = np.sum(np.abs(sobely))
+
+        # SCORE LOGIC
+        score = 0
+
+        # chữ nằm trên là tốt
+        if text_top > text_bottom:
+            score += (text_top - text_bottom) * 2
+        else:
+            score -= (text_bottom - text_top) * 2
+
+        # chữ nằm ngang là tốt
+        score += (horizontal_strength - vertical_strength)
+
+        return score
 
     rotations = {
-        "0°": image,
-        "90°": cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
-        "180°": cv2.rotate(image, cv2.ROTATE_180),
-        "270°": cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE),
+        0: img0,
+        90: cv2.rotate(img0, cv2.ROTATE_90_CLOCKWISE),
+        180: cv2.rotate(img0, cv2.ROTATE_180),
+        270: cv2.rotate(img0, cv2.ROTATE_90_COUNTERCLOCKWISE)
     }
 
-    best_score = None
-    best_angle = "0°"
-    best_image = image
-
+    scores = {}
     for angle, img in rotations.items():
-        score = score_horizontal_edges(img)
-        print(f"   ↪ ROTATE CHECK {angle} → score = {int(score)}")
+        s = score_image(img)
+        scores[angle] = s
+        if debug:
+            print(f"   ↪ ROTATE CHECK {angle}° → score = {int(s)}")
 
-        if best_score is None or score > best_score:
-            best_score = score
-            best_angle = angle
-            best_image = img
+    # chọn góc tốt nhất
+    best_angle = max(scores, key=scores.get)
 
-    print(f"✅ ROTATE DONE → chosen angle = {best_angle}")
+    # an toàn: chỉ xoay nếu hơn rõ ràng
+    sorted_scores = sorted(scores.values(), reverse=True)
+    if len(sorted_scores) >= 2:
+        if sorted_scores[0] - sorted_scores[1] < 0.15 * abs(sorted_scores[0]):
+            if debug:
+                print("⚠️ ROTATE: not confident → keep original")
+            return image_path
 
-    cv2.imwrite(image_path, best_image)
+    if best_angle != 0:
+        if debug:
+            print(f"✅ ROTATE DONE → chosen angle = {best_angle}°")
+        cv2.imwrite(image_path, rotations[best_angle])
+    else:
+        if debug:
+            print("✅ ROTATE: already correct")
+
     return image_path
+
 
 
 
@@ -205,8 +247,8 @@ def ocr():
         filename = f"{uuid.uuid4()}.jpg"
         image.save(filename)
 
-        # 🔁 ROTATE LOCAL – KHÔNG OCR
-        auto_rotate_cccd_local(filename)
+        # 🔁 AUTO ROTATE (LOCAL)
+        auto_rotate_document(filename)
 
         # ===== OCR.SPACE (HARD TIMEOUT) =====
         try:
