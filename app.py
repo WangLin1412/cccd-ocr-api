@@ -5,7 +5,6 @@ import requests, os, uuid, re, unicodedata
 import pandas as pd
 from PIL import Image
 import cv2
-import pytesseract
 import numpy as np
 from collections import deque
 import time
@@ -14,9 +13,6 @@ import threading
 
 # ===== SLOT LIMIT =====
 semaphore = threading.Semaphore(2)
-# ===== DEBUG CONCURRENCY =====
-active_requests = 0
-active_lock = threading.Lock()
 # ===== RATE LIMIT =====
 REQUEST_LIMIT = 10
 TIME_WINDOW = 60  # seconds
@@ -101,38 +97,50 @@ def clean_cccd_text(raw_text: str) -> str:
 
     return "\n".join(output)
 
-def auto_rotate_image(image_path):
+def auto_rotate_cccd_local(image_path):
     """
-    Tự động xoay ảnh CCCD về đúng chiều
+    Auto rotate CCCD using edge direction analysis (NO OCR, NO TESSERACT)
+    Works on Render free
     """
     image = cv2.imread(image_path)
     if image is None:
-        return
+        return image_path
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    def score_horizontal_edges(img):
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    try:
-        osd = pytesseract.image_to_osd(gray)
-        rotate_angle = 0
+        edges = cv2.Canny(gray, 50, 150)
 
-        if "Rotate: 90" in osd:
-            rotate_angle = 90
-        elif "Rotate: 180" in osd:
-            rotate_angle = 180
-        elif "Rotate: 270" in osd:
-            rotate_angle = 270
+        # Sobel gradients
+        sobelx = cv2.Sobel(edges, cv2.CV_64F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(edges, cv2.CV_64F, 0, 1, ksize=3)
 
-        if rotate_angle != 0:
-            (h, w) = image.shape[:2]
-            center = (w // 2, h // 2)
-            M = cv2.getRotationMatrix2D(center, -rotate_angle, 1.0)
-            rotated = cv2.warpAffine(image, M, (w, h),
-                                     flags=cv2.INTER_CUBIC,
-                                     borderMode=cv2.BORDER_REPLICATE)
-            cv2.imwrite(image_path, rotated)
+        # Horizontal edges stronger when sobely is strong
+        horizontal_strength = np.sum(np.abs(sobely))
+        vertical_strength = np.sum(np.abs(sobelx))
 
-    except Exception as e:
-        print("Auto-rotate failed:", e)
+        return horizontal_strength - vertical_strength
+
+    candidates = [
+        image,
+        cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
+        cv2.rotate(image, cv2.ROTATE_180),
+        cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE),
+    ]
+
+    best_score = None
+    best_image = image
+
+    for img in candidates:
+        score = score_horizontal_edges(img)
+        if best_score is None or score > best_score:
+            best_score = score
+            best_image = img
+
+    cv2.imwrite(image_path, best_image)
+    return image_path
+
 
 # ===============================
 # ROUTES
@@ -173,17 +181,15 @@ def ocr():
     # ===== SLOT LIMIT 2 USER =====
     acquired = semaphore.acquire(blocking=False)
     if not acquired:
+        # ❗ rollback rate limit vì request chưa được xử lý
+        with rate_lock:
+            if request_times:
+                request_times.pop()
+    
         return jsonify({
             "error": "Chưa tới lượt bạn!"
         }), 429
-        
-    with active_lock:
-        global active_requests
-        active_requests += 1
-        print("🟢 ACTIVE REQUESTS =", active_requests)
 
-    # ⛔ CHỈ ĐỂ TEST – GIỮ REQUEST LẠI 10s
-    time.sleep(10)
 
     filename = None
     try:
@@ -195,8 +201,8 @@ def ocr():
         filename = f"{uuid.uuid4()}.jpg"
         image.save(filename)
 
-        # ✅ AUTO ROTATE CCCD
-        auto_rotate_image(filename)
+        # 🔁 ROTATE LOCAL – KHÔNG OCR
+        auto_rotate_cccd_local(filename)
 
         # ===== OCR.SPACE (HARD TIMEOUT) =====
         try:
@@ -248,9 +254,6 @@ def ocr():
         return jsonify({"error": str(e)}), 500
 
     finally:
-        with active_lock:
-            active_requests -= 1
-            print("🔵 REQUEST FINISHED → ACTIVE =", active_requests)
         # 🔓 NHẢ SLOT + DỌN FILE
         if acquired:
             semaphore.release()
