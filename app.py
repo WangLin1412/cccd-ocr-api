@@ -14,8 +14,8 @@ import threading
 # ===== SLOT LIMIT =====
 semaphore = threading.Semaphore(2)
 # ===== RATE LIMIT =====
-REQUEST_LIMIT = 3
-TIME_WINDOW = 20  # seconds
+REQUEST_LIMIT = 10
+TIME_WINDOW = 60  # seconds
 request_times = deque()
 rate_lock = threading.Lock()
 
