@@ -223,6 +223,7 @@ def ocr():
             }), 429
 
         request_times.append(now)
+        print("⏱ RATE COUNT =", len(request_times))
 
     # ===== SLOT LIMIT 2 USER =====
     acquired = semaphore.acquire(blocking=False)
@@ -248,7 +249,7 @@ def ocr():
         image.save(filename)
 
         # 🔁 AUTO ROTATE (LOCAL)
-        auto_rotate_document(filename)
+        # auto_rotate_document(filename)
 
         # ===== OCR.SPACE (HARD TIMEOUT) =====
         try:
