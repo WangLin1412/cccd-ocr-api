@@ -14,6 +14,9 @@ import threading
 
 # ===== SLOT LIMIT =====
 semaphore = threading.Semaphore(2)
+# ===== DEBUG CONCURRENCY =====
+active_requests = 0
+active_lock = threading.Lock()
 # ===== RATE LIMIT =====
 REQUEST_LIMIT = 10
 TIME_WINDOW = 60  # seconds
@@ -173,6 +176,14 @@ def ocr():
         return jsonify({
             "error": "Chưa tới lượt bạn!"
         }), 429
+        
+    with active_lock:
+        global active_requests
+        active_requests += 1
+        print("🟢 ACTIVE REQUESTS =", active_requests)
+
+    # ⛔ CHỈ ĐỂ TEST – GIỮ REQUEST LẠI 10s
+    time.sleep(10)
 
     filename = None
     try:
@@ -237,6 +248,9 @@ def ocr():
         return jsonify({"error": str(e)}), 500
 
     finally:
+        with active_lock:
+            active_requests -= 1
+            print("🔵 REQUEST FINISHED → ACTIVE =", active_requests)
         # 🔓 NHẢ SLOT + DỌN FILE
         if acquired:
             semaphore.release()
