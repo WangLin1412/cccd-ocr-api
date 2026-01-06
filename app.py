@@ -99,47 +99,51 @@ def clean_cccd_text(raw_text: str) -> str:
 
 def auto_rotate_cccd_local(image_path):
     """
-    Auto rotate CCCD using edge direction analysis (NO OCR, NO TESSERACT)
-    Works on Render free
+    Auto rotate image using edge direction analysis
+    NO OCR – NO TESSERACT – Render free safe
     """
     image = cv2.imread(image_path)
     if image is None:
+        print("❌ ROTATE: cannot read image")
         return image_path
+
+    print("🔄 ROTATE: start local auto-rotate")
 
     def score_horizontal_edges(img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
-
         edges = cv2.Canny(gray, 50, 150)
 
-        # Sobel gradients
         sobelx = cv2.Sobel(edges, cv2.CV_64F, 1, 0, ksize=3)
         sobely = cv2.Sobel(edges, cv2.CV_64F, 0, 1, ksize=3)
 
-        # Horizontal edges stronger when sobely is strong
-        horizontal_strength = np.sum(np.abs(sobely))
-        vertical_strength = np.sum(np.abs(sobelx))
+        return np.sum(np.abs(sobely)) - np.sum(np.abs(sobelx))
 
-        return horizontal_strength - vertical_strength
-
-    candidates = [
-        image,
-        cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
-        cv2.rotate(image, cv2.ROTATE_180),
-        cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE),
-    ]
+    rotations = {
+        "0°": image,
+        "90°": cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
+        "180°": cv2.rotate(image, cv2.ROTATE_180),
+        "270°": cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE),
+    }
 
     best_score = None
+    best_angle = "0°"
     best_image = image
 
-    for img in candidates:
+    for angle, img in rotations.items():
         score = score_horizontal_edges(img)
+        print(f"   ↪ ROTATE CHECK {angle} → score = {int(score)}")
+
         if best_score is None or score > best_score:
             best_score = score
+            best_angle = angle
             best_image = img
+
+    print(f"✅ ROTATE DONE → chosen angle = {best_angle}")
 
     cv2.imwrite(image_path, best_image)
     return image_path
+
 
 
 # ===============================
