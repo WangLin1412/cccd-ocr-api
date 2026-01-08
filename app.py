@@ -9,6 +9,7 @@ import numpy as np
 from collections import deque
 import time
 import threading
+from flask import send_from_directory
 
 
 # ===== SLOT LIMIT =====
@@ -317,3 +318,39 @@ def download(name):
     if os.path.exists(name):
         return send_file(name, as_attachment=True)
     return "Not found", 404
+
+
+@app.route("/export-excel", methods=["POST"])
+def export_excel():
+    data = request.json
+
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    # 📁 thư mục lưu excel (khuyến nghị)
+    export_dir = "exports"
+    os.makedirs(export_dir, exist_ok=True)
+
+    # 🧾 tạo dataframe
+    df = pd.DataFrame([{
+        "Số CCCD": data.get("id", ""),
+        "Họ và tên": data.get("name", ""),
+        "Ngày sinh": data.get("dob", ""),
+        "Ngày cấp": data.get("issue_date", ""),
+        "Địa chỉ": data.get("address", "")
+    }])
+
+    # 🆔 tên file
+    filename = f"cccd_{uuid.uuid4().hex}.xlsx"
+    filepath = os.path.join(export_dir, filename)
+
+    df.to_excel(filepath, index=False)
+
+    # ✅ DÒNG QUYẾT ĐỊNH (FRONTEND ĐỢI DÒNG NÀY)
+    return jsonify({
+        "excel_url": f"/exports/{filename}"
+    })
+
+@app.route("/exports/<filename>")
+def download_export(filename):
+    return send_from_directory("exports", filename, as_attachment=True)
