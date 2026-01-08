@@ -97,6 +97,41 @@ def clean_cccd_text(raw_text: str) -> str:
 
     return "\n".join(output)
 
+def extract_cccd_fields(text: str) -> dict:
+    fields = {
+        "id": "",
+        "name": "",
+        "dob": "",
+        "issue_date": "",
+        "address": ""
+    }
+
+    # Số CCCD
+    m = re.search(r"Số:\s*(\d{12})", text)
+    if m:
+        fields["id"] = m.group(1)
+
+    # Họ tên
+    m = re.search(r"Họ và tên[:\s]+(.+)", text)
+    if m:
+        fields["name"] = m.group(1).strip()
+
+    # Ngày sinh
+    m = re.search(r"Ngày sinh[:\s]+(\d{2}/\d{2}/\d{4})", text)
+    if m:
+        fields["dob"] = m.group(1)
+
+    # Ngày cấp (dòng ngày đơn lẻ)
+    m = re.search(r"(\d{2}/\d{2}/\d{4})", text)
+    if m:
+        fields["issue_date"] = m.group(1)
+
+    # Địa chỉ
+    m = re.search(r"Nơi thường trú[:\s]+(.+)", text)
+    if m:
+        fields["address"] = m.group(1).strip()
+
+    return fields
 
 
 def auto_rotate_document(image_path, debug=True):
@@ -291,6 +326,7 @@ def ocr():
 
         raw_text = parsed[0]["ParsedText"]
         text = clean_cccd_text(raw_text)
+        fields = extract_cccd_fields(text)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -302,15 +338,11 @@ def ocr():
         if filename and os.path.exists(filename):
             os.remove(filename)
 
-    # ===== EXPORT EXCEL =====
-    excel_name = f"{uuid.uuid4()}.xlsx"
-    df = pd.DataFrame([{"CCCD_TEXT": text}])
-    df.to_excel(excel_name, index=False)
-
     return jsonify({
         "text": text,
-        "excel_url": f"/download/{excel_name}"
+        "fields": fields
     })
+
 
 @app.route("/download/<name>", methods=["GET"])
 def download(name):
