@@ -121,10 +121,14 @@ def extract_cccd_fields(text: str) -> dict:
     if m:
         fields["dob"] = m.group(1)
 
-    # Ngày cấp (dòng ngày đơn lẻ)
-    m = re.search(r"(\d{2}/\d{2}/\d{4})", text)
-    if m:
-        fields["issue_date"] = m.group(1)
+    # Giới tính
+    for line in text.splitlines():
+        l = line.lower()
+        if "giới tính" in l:
+            if "nam" in l:
+                fields["gender"] = "Nam"
+            elif "nữ" in l or "nu" in l:
+                fields["gender"] = "Nữ"
 
     # Địa chỉ
     m = re.search(r"Nơi thường trú[:\s]+(.+)", text)
@@ -367,7 +371,7 @@ def export_excel():
         "Số CCCD": data.get("id", ""),
         "Họ và tên": data.get("name", ""),
         "Ngày sinh": data.get("dob", ""),
-        "Ngày cấp": data.get("issue_date", ""),
+        "Giới tính": data.get("gender", ""),
         "Địa chỉ": data.get("address", "")
     }])
 
