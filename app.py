@@ -97,45 +97,60 @@ def clean_cccd_text(raw_text: str) -> str:
 
     return "\n".join(output)
 
+
 def extract_cccd_fields(text: str) -> dict:
     fields = {
         "id": "",
         "name": "",
         "dob": "",
-        "issue_date": "",
+        "gender": "",
         "address": ""
     }
 
-    # Số CCCD
-    m = re.search(r"Số:\s*(\d{12})", text)
+    # ===== SỐ CCCD =====
+    m = re.search(r"(Số|No\.?)[:\s]*([0-9]{12})", text, re.IGNORECASE)
     if m:
-        fields["id"] = m.group(1)
+        fields["id"] = m.group(2)
 
-    # Họ tên
-    m = re.search(r"Họ và tên[:\s]+(.+)", text)
+    # ===== HỌ TÊN =====
+    m = re.search(
+        r"(Họ\s*và\s*tên|Full\s*name)[:\s]*([A-ZÀ-Ỵ\s]+)",
+        text,
+        re.IGNORECASE
+    )
     if m:
-        fields["name"] = m.group(1).strip()
+        fields["name"] = m.group(2).strip()
 
-    # Ngày sinh
-    m = re.search(r"Ngày sinh[:\s]+(\d{2}/\d{2}/\d{4})", text)
+    # ===== NGÀY SINH =====
+    m = re.search(
+        r"(Ngày.*sinh|Date\s*of\s*birth)[:\s]*([0-9]{2}[\/\-\s][0-9]{2}[\/\-\s][0-9]{4})",
+        text,
+        re.IGNORECASE
+    )
     if m:
-        fields["dob"] = m.group(1)
+        fields["dob"] = m.group(2).replace(" ", "/").replace("-", "/")
 
-    # Giới tính
-    for line in text.splitlines():
-        l = line.lower()
-        if "giới tính" in l:
-            if "nam" in l:
-                fields["gender"] = "Nam"
-            elif "nữ" in l or "nu" in l:
-                fields["gender"] = "Nữ"
-
-    # Địa chỉ
-    m = re.search(r"Nơi thường trú[:\s]+(.+)", text)
+    # ===== GIỚI TÍNH =====
+    m = re.search(
+        r"(Giới\s*tính|Sex)[:\s]*(Nam|Nữ|Male|Female)",
+        text,
+        re.IGNORECASE
+    )
     if m:
-        fields["address"] = m.group(1).strip()
+        g = m.group(2).lower()
+        fields["gender"] = "Nam" if g in ["nam", "male"] else "Nữ"
+
+    # ===== ĐỊA CHỈ =====
+    m = re.search(
+        r"(Nơi\s*thường\s*trú|Place\s*of\s*residence)[:\s]*([\s\S]+?)(?=Quê|Có giá trị|$)",
+        text,
+        re.IGNORECASE
+    )
+    if m:
+        fields["address"] = re.sub(r"\s+", " ", m.group(2)).strip()
 
     return fields
+
 
 
 def auto_rotate_document(image_path, debug=True):
