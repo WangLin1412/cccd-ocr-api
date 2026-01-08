@@ -263,7 +263,6 @@ def ocr():
                 "error": "Không kết nối được OCR, vui lòng thử lại"
             }), 504
         except requests.exceptions.ReadTimeout:
-            semaphore.release()
             return jsonify({
                 "error": "OCR xử lý quá lâu, vui lòng gửi lại ảnh"
             }), 504
