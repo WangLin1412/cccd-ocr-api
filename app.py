@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from threading import Semaphore
 from flask_cors import CORS
 import requests, os, uuid, re, unicodedata
@@ -8,8 +8,7 @@ import cv2
 import numpy as np
 from collections import deque
 import time
-import threading
-from flask import send_from_directory
+import threading 
 
 
 # ===== SLOT LIMIT =====
@@ -264,6 +263,7 @@ def ocr():
                 "error": "Không kết nối được OCR, vui lòng thử lại"
             }), 504
         except requests.exceptions.ReadTimeout:
+            semaphore.release()
             return jsonify({
                 "error": "OCR xử lý quá lâu, vui lòng gửi lại ảnh"
             }), 504
