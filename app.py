@@ -120,7 +120,7 @@ def extract_cccd_fields(text: str) -> dict:
         re.IGNORECASE
     )
     if m:
-        fields["name"] = m.group(2).strip().replace("\n", " ")
+        fields["name"] = clean_field_value(m.group(2))
 
     # ========= NGÀY SINH =========
     m = re.search(
@@ -149,10 +149,36 @@ def extract_cccd_fields(text: str) -> dict:
         re.IGNORECASE
     )
     if m:
-        fields["address"] = m.group(2).strip().replace("\n", " ")
+        fields["address"] = clean_field_value(m.group(2))
 
     return fields
 
+
+def clean_field_value(value: str) -> str:
+    if not value:
+        return ""
+
+    # gộp dòng
+    value = value.replace("\n", " ").strip()
+
+    # bỏ các nhãn còn dính
+    value = re.sub(
+        r"^(\/?\s*)?"
+        r"(Họ\s*và\s*tên|Full\s*name|"
+        r"Ngày\s*sinh|Date\s*of\s*birth|"
+        r"Giới\s*tính|Sex|"
+        r"Nơi\s*thường\s*trú|Place\s*of\s*residence|"
+        r"Quốc\s*tịch|Nationality)"
+        r"\s*[:\-]?\s*",
+        "",
+        value,
+        flags=re.IGNORECASE
+    )
+
+    # bỏ khoảng trắng dư
+    value = re.sub(r"\s{2,}", " ", value)
+
+    return value.strip()
 
 
 def auto_rotate_document(image_path, debug=True):
