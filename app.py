@@ -99,13 +99,6 @@ def clean_cccd_text(raw_text: str) -> str:
 
 
 def extract_cccd_fields(text: str) -> dict:
-    """
-    Tối ưu cho CCCD Việt Nam:
-    - Cũ / mới
-    - Song ngữ / thuần Việt
-    - OCR lệch dòng
-    """
-
     fields = {
         "id": "",
         "name": "",
@@ -114,71 +107,52 @@ def extract_cccd_fields(text: str) -> dict:
         "address": ""
     }
 
-    # Chuẩn hoá text để regex ổn định
-    t = unicodedata.normalize("NFKC", text)
-    t = re.sub(r"\s+", " ", t)
-
-    # ======================
-    # SỐ CCCD
-    # ======================
-    m = re.search(
-        r"(Số|No\.?)\s*[:\-]?\s*([0-9]{12})",
-        t,
-        re.IGNORECASE
-    )
+    # ========= SỐ CCCD =========
+    m = re.search(r"(Số|No\.?)\s*[:\-]?\s*(\d{12})", text, re.IGNORECASE)
     if m:
         fields["id"] = m.group(2)
 
-    # ======================
-    # HỌ VÀ TÊN
-    # ======================
+    # ========= HỌ TÊN =========
     m = re.search(
-        r"(Họ\s*và\s*tên|Full\s*name)\s*[:\-]?\s*([A-ZÀ-Ỵ\s]{3,})",
-        t,
+        r"(Họ\s*và\s*tên|Full\s*name)\s*[:\-]?\s*([\s\S]+?)"
+        r"(?=(Ngày\s*sinh|Date\s*of\s*birth|Giới\s*tính|Sex|Quốc\s*tịch|Nationality|$))",
+        text,
         re.IGNORECASE
     )
     if m:
-        fields["name"] = m.group(2).strip()
+        fields["name"] = m.group(2).strip().replace("\n", " ")
 
-    # ======================
-    # NGÀY SINH
-    # (Ngày sinh / Ngày, tháng, năm sinh / Date of birth)
-    # ======================
+    # ========= NGÀY SINH =========
     m = re.search(
-        r"(Ngày.*sinh|Date\s*of\s*birth)\s*[:\-]?\s*([0-9]{2}[\/\-][0-9]{2}[\/\-][0-9]{4})",
-        t,
+        r"(Ngày\s*(?:,?\s*tháng,?\s*năm)?\s*sinh|Date\s*of\s*birth)"
+        r"\s*[:\-]?\s*(\d{2}/\d{2}/\d{4})",
+        text,
         re.IGNORECASE
     )
     if m:
-        fields["dob"] = m.group(2).replace("-", "/")
+        fields["dob"] = m.group(2)
 
-    # ======================
-    # GIỚI TÍNH
-    # ======================
+    # ========= GIỚI TÍNH =========
     m = re.search(
         r"(Giới\s*tính|Sex)\s*[:\-]?\s*(Nam|Nữ|Male|Female)",
-        t,
+        text,
         re.IGNORECASE
     )
     if m:
-        g = m.group(2).lower()
-        fields["gender"] = "Nam" if g in ["nam", "male"] else "Nữ"
+        fields["gender"] = m.group(2)
 
-    # ======================
-    # ĐỊA CHỈ (NƠI THƯỜNG TRÚ)
-    # Lấy đến khi gặp nhãn khác hoặc hết text
-    # ======================
+    # ========= NƠI THƯỜNG TRÚ =========
     m = re.search(
-        r"(Nơi\s*thường\s*trú|Place\s*of\s*residence)\s*[:\-]?\s*(.+?)(?=(Quê|Có\s*giá\s*trị|$))",
+        r"(Nơi\s*thường\s*trú|Place\s*of\s*residence)\s*[:\-]?\s*([\s\S]+?)"
+        r"(?=(Quê\s*quán|Place\s*of\s*origin|Có\s*giá\s*trị|Date\s*of\s*expiry|$))",
         text,
-        re.IGNORECASE | re.DOTALL
+        re.IGNORECASE
     )
     if m:
-        addr = m.group(2)
-        addr = re.sub(r"\s+", " ", addr)
-        fields["address"] = addr.strip()
+        fields["address"] = m.group(2).strip().replace("\n", " ")
 
     return fields
+
 
 
 def auto_rotate_document(image_path, debug=True):
